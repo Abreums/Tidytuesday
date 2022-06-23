@@ -1,0 +1,132 @@
+---
+title: "First Accomplishments"
+author: "abreu"
+date: '2022-06-23'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(patchwork)
+library(wesanderson)
+
+theme_set(theme_minimal())
+```
+
+Read data.
+
+```{r}
+firsts <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-06-09/firsts.csv')
+```
+
+Let's build a data set with few relevants events to plot with annotate:
+
+```{r}
+selected_events <- 
+  firsts %>% 
+  filter(person %in% c("Gracia Real de Santa Teresa de Mose (later named Fort Mose) in Florida",
+         "W.E.B. Du Bois[71]",
+         "Martin Luther King Jr.[178]",
+#         "Luke Cage, Marvel Comics' Luke Cage, Hero for Hire #1 (June 1972).[195][Note 18] (See also",
+         "Barack Obama[226]"
+         )) %>% 
+  mutate(accomplishment = str_remove(accomplishment, "African-American ")) %>% 
+  mutate(label = paste(year, accomplishment, person, sep = "\n")) %>% 
+  select(year, label)
+
+annotation_coordinates <- 
+  tribble(
+    ~year, ~x, ~y, ~xend, ~yend,
+    1738, 1738, 10,  1730,   1,  # Gracia Real
+    1895, 1820, 20,  1890,   8,  # W.E.B Du Bois
+    1963, 1880, 25,  1960,  18,  # King
+    2008, 1900, 30,  2000,  20   # Obama 
+  )
+selected_events <- 
+  selected_events %>% 
+  left_join(annotation_coordinates, by = "year")
+
+
+```
+
+We will group data by decades.
+
+```{r}
+firsts <- 
+  firsts %>% 
+  mutate(decade = year %/%10 * 10)
+```
+
+First plot with gender division. This will be reversed in y axis.
+
+```{r}
+p1 <- 
+  firsts %>% 
+  ggplot(aes(x = decade, fill = gender)) + 
+  geom_bar() +
+  coord_flip() +
+  theme(
+    legend.position = "bottom"
+  ) +
+  labs(
+    subtitle = "Group contribution",
+    x = NULL,
+    y = NULL,
+    fill = NULL
+  ) +
+  scale_x_continuous(breaks = seq(from = 1700, to = 2020, by = 20)) +
+  scale_y_reverse() +
+  scale_fill_manual(values = wes_palette(n = 2, "Moonrise3"))
+```
+
+Second plot with category division
+
+```{r}
+p2  <- 
+  firsts %>% 
+  ggplot() + 
+  geom_bar(aes(x = decade, fill = category)) +
+  labs(
+    subtitle = "Category contribution",
+    x = NULL,
+    y = NULL,
+    fill = NULL
+  ) +
+  scale_x_continuous(breaks = seq(from = 1700, to = 2020, by = 20)) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.length.y = unit(0, units = "cm")
+  ) +
+  coord_flip() +
+  scale_fill_brewer(palette="Accent")
+```
+
+Add annotate relevant events.
+
+```{r}
+#Include some events descriptions and segments
+p2 <-
+  p2 +
+  geom_text(data = selected_events,
+            aes(x = x, y = y, label = label),
+            size = 3,
+            hjust = 0,
+            vjust = 0) +
+  geom_segment(data = selected_events,
+               aes(x = x, y = y, xend = xend, yend = yend),
+               color = "#414244",
+               size = 0.1)
+```
+
+Compose with patchwork.
+
+```{r}
+p1 + p2 + plot_annotation(title = "African-American First Accomplishments")
+
+
+```
