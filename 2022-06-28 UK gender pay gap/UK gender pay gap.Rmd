@@ -1,0 +1,78 @@
+---
+title: "UK gender pay gap"
+author: "abreu"
+date: '2022-06-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+
+paygap <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-06-28/paygap.csv')
+
+sic_section_df <- readr::read_csv('https://raw.githubusercontent.com/elb98rm/uk-sic-codes/master/uk-sic-code-sections.csv')
+sic_df <- readr::read_csv('https://raw.githubusercontent.com/elb98rm/uk-sic-codes/master/uk-sic-codes.csv')
+
+```
+
+Primeira tentativa agrupando por sector
+
+```{r}
+
+section_paygap <- 
+  paygap %>% 
+  select(employer_id, sic_codes, diff_mean_hourly_percent, due_date, date_submitted) %>% 
+  mutate(sic_codes = str_split(sic_codes, ":")) %>% 
+  unnest(sic_codes) %>% 
+  mutate(sic_codes = as.numeric(sic_codes)) %>%
+  left_join(sic_df, by = c("sic_codes" = "sic_code")) %>% 
+  left_join(sic_section_df, by = c("sic_section_id" = "id")) %>% 
+  select(-c(id, sic_section_id, description.x)) %>% 
+  rename(section_desc = description.y)
+
+library(lubridate)
+section_paygap %>% 
+  mutate(year = year(due_date)) %>% 
+  ggplot(aes(x = year, y = diff_mean_hourly_percent, color = section_desc)) +
+  geom_jitter() +
+  theme(
+    legend.position = "none"
+  ) +
+  facet_wrap(~section_desc)
+  
+  
+  
+  
+```
+
+
+Relação de percentual de diferença de ganho comparado com empresas que empregam mais ou menos mulheres
+
+```{r}
+
+paygap %>% 
+  mutate(year = year(due_date)) %>% 
+  filter(!is.na(diff_mean_hourly_percent)) %>% 
+  mutate(female_percent = (female_lower_quartile + female_lower_middle_quartile + female_upper_middle_quartile + female_top_quartile)/4) %>% 
+  filter(!is.na(female_percent)) %>% 
+  mutate(parity = case_when(
+    diff_mean_hourly_percent > 5 ~ "men owns 5% more than women",
+    diff_mean_hourly_percent < -5 ~ "women owns 5% more than men",
+    TRUE ~ "approximately equal"
+  )) %>% 
+  mutate(women_employee_majority = female_percent %/% 10 * 10) %>% 
+  #filter(abs(diff_mean_hourly_percent) < 100) %>% 
+  ggplot(aes(x = women_employee_majority, fill = parity)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~year)
+
+
+```
+
+
+
+
+
+
