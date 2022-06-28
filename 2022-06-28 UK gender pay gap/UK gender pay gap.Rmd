@@ -54,6 +54,7 @@ Relação de percentual de diferença de ganho comparado com empresas que empreg
 
 paygap %>% 
   mutate(year = year(due_date)) %>% 
+  filter(year != 2023) %>% 
   filter(!is.na(diff_mean_hourly_percent)) %>% 
   mutate(female_percent = (female_lower_quartile + female_lower_middle_quartile + female_upper_middle_quartile + female_top_quartile)/4) %>% 
   filter(!is.na(female_percent)) %>% 
@@ -66,7 +67,15 @@ paygap %>%
   #filter(abs(diff_mean_hourly_percent) < 100) %>% 
   ggplot(aes(x = women_employee_majority, fill = parity)) +
   geom_bar(position = "dodge") +
-  facet_wrap(~year)
+  facet_wrap(~year) +
+  labs(
+    title = "Do women earn more in companies that have more women employees?",
+    x = "Percent of women employees",
+    y = "Number of companies"
+  ) +
+  theme(
+    legend.position = "top"
+  ) 
 
 
 ```
