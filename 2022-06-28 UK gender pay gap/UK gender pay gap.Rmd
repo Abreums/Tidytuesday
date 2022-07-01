@@ -9,79 +9,104 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
+library(lubridate)
 
 paygap <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-06-28/paygap.csv')
 
+# Getting section codes from internet - really don't know if 
+# this data is correct or accurate...
 sic_section_df <- readr::read_csv('https://raw.githubusercontent.com/elb98rm/uk-sic-codes/master/uk-sic-code-sections.csv')
 sic_df <- readr::read_csv('https://raw.githubusercontent.com/elb98rm/uk-sic-codes/master/uk-sic-codes.csv')
 
 ```
 
-Primeira tentativa agrupando por sector
+Let's join section information to the paygap dataframe
 
 ```{r}
-
-section_paygap <- 
+# include year as column attribute
+# let's work only with 2022 data
+paygap_2022 <- 
   paygap %>% 
-  select(employer_id, sic_codes, diff_mean_hourly_percent, due_date, date_submitted) %>% 
+  mutate(year = year(due_date)) %>% 
+  filter(year == 2022)
+
+# join sic section id and description as column attribute
+# we will have one row by company-sic_code
+# different sic-codes will lead to the same section code/description
+# as we are going to work with by section we need to summarise only 
+# one row by section
+paygap_2022_by_section <- 
+  paygap_2022 %>% 
   mutate(sic_codes = str_split(sic_codes, ":")) %>% 
   unnest(sic_codes) %>% 
   mutate(sic_codes = as.numeric(sic_codes)) %>%
   left_join(sic_df, by = c("sic_codes" = "sic_code")) %>% 
   left_join(sic_section_df, by = c("sic_section_id" = "id")) %>% 
   select(-c(id, sic_section_id, description.x)) %>% 
-  rename(section_desc = description.y)
-
-library(lubridate)
-section_paygap %>% 
-  mutate(year = year(due_date)) %>% 
-  ggplot(aes(x = year, y = diff_mean_hourly_percent, color = section_desc)) +
-  geom_jitter() +
-  theme(
-    legend.position = "none"
-  ) +
-  facet_wrap(~section_desc)
-  
-  
-  
-  
+  rename(section_desc = description.y) %>% 
+  filter(!is.na(section_desc)) %>% 
+  group_by(employer_id, section_desc) %>% 
+  slice(1L) %>% 
+  ungroup()
 ```
 
-
-Relação de percentual de diferença de ganho comparado com empresas que empregam mais ou menos mulheres
+What is the female workforce by company?
 
 ```{r}
+# Calculate female_workforce as the mean of the 
+# female percentage of each quartile
+# also create a group attribute if the female_workforce is
+# between 0-10%, 11%-20%, so on...
+paygap_2022_by_section <- 
+  paygap_2022_by_section %>% 
+  mutate(female_wkforce = 
+           (female_lower_quartile 
+            + female_lower_middle_quartile 
+            + female_upper_middle_quartile
+            + female_top_quartile)/4) %>% 
+  filter(!is.na(female_wkforce)) %>% 
+  mutate(female_wfbin = female_wkforce %/% 10 * 10 + 10,
+         female_wfbin = ifelse(female_wfbin > 100, 100, female_wfbin))
+  filter(!is.na(female_wfbin))
+```
 
-paygap %>% 
-  mutate(year = year(due_date)) %>% 
-  filter(year != 2023) %>% 
-  filter(!is.na(diff_mean_hourly_percent)) %>% 
-  mutate(female_percent = (female_lower_quartile + female_lower_middle_quartile + female_upper_middle_quartile + female_top_quartile)/4) %>% 
-  filter(!is.na(female_percent)) %>% 
-  mutate(parity = case_when(
-    diff_mean_hourly_percent > 5 ~ "men owns 5% more than women",
-    diff_mean_hourly_percent < -5 ~ "women owns 5% more than men",
-    TRUE ~ "approximately equal"
-  )) %>% 
-  mutate(women_employee_majority = female_percent %/% 10 * 10) %>% 
-  #filter(abs(diff_mean_hourly_percent) < 100) %>% 
-  ggplot(aes(x = women_employee_majority, fill = parity)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~year) +
+# What is those companies where women earns equal, more or less than men?
+```{r}
+paygap_2022_by_section <- 
+  paygap_2022_by_section %>% 
+  mutate(female_equality = case_when(
+    diff_median_hourly_percent < -3 ~ "Greater",
+    diff_median_hourly_percent > 3 ~ "Less",
+    TRUE ~ "Equal")) %>% 
+  mutate(female_equality = factor(female_equality, levels = c("Less", "Equal", "Greater")))
+  
+```
+
+# Plot it
+
+
+```{r}
+# Show female workforce percentage by business section
+paygap_2022_by_section %>% 
+  mutate(section_desc = fct_lump_prop(section_desc, prop = 0.05)) %>% 
+  ggplot(aes(x = female_wfbin/100, fill = female_equality)) +
+  geom_bar() +
   labs(
-    title = "Do women earn more in companies that have more women employees?",
-    x = "Percent of women employees",
-    y = "Number of companies"
+    title = "Salary gap for different UK Business Sections, considering female workforce percentage participation",
+    x = "Participation of female workforce in the company",
+    y = "Number of companies",
+    fill = "Overall female salary value is:"
   ) +
+  facet_wrap(~section_desc, nrow = 2) +
+  theme_minimal() +
   theme(
     legend.position = "top"
-  ) 
+  ) +
+  scale_fill_manual(values = c("Less" = "red", "Equal" = "green", "Greater" = "blue")) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1L))
+
+ggsave("./2022-06-28 UK gender pay gap/paygap.png")
 
 
 ```
-
-
-
-
-
 
